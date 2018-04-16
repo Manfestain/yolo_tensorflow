@@ -8,17 +8,17 @@ slim = tf.contrib.slim
 class YOLONet(object):
 
     def __init__(self, is_training=True):
-        self.classes = cfg.CLASSES
+        self.classes = cfg.CLASSES   # 20
         self.num_class = len(self.classes)
-        self.image_size = cfg.IMAGE_SIZE
-        self.cell_size = cfg.CELL_SIZE
-        self.boxes_per_cell = cfg.BOXES_PER_CELL
+        self.image_size = cfg.IMAGE_SIZE   # 448
+        self.cell_size = cfg.CELL_SIZE   # 7
+        self.boxes_per_cell = cfg.BOXES_PER_CELL   # 2，每个cell最多可以预测两个
         self.output_size = (self.cell_size * self.cell_size) *\
-            (self.num_class + self.boxes_per_cell * 5)
+            (self.num_class + self.boxes_per_cell * 5)  # 7x7x(20+2*5)，每个cell预测的结果，包含位置和概率信息
         self.scale = 1.0 * self.image_size / self.cell_size
-        self.boundary1 = self.cell_size * self.cell_size * self.num_class
+        self.boundary1 = self.cell_size * self.cell_size * self.num_class   # 7x7x20，每个框预测出的概率
         self.boundary2 = self.boundary1 +\
-            self.cell_size * self.cell_size * self.boxes_per_cell
+            self.cell_size * self.cell_size * self.boxes_per_cell   # 7x7x2，confidence
 
         self.object_scale = cfg.OBJECT_SCALE
         self.noobject_scale = cfg.NOOBJECT_SCALE
@@ -31,7 +31,7 @@ class YOLONet(object):
 
         self.offset = np.transpose(np.reshape(np.array(
             [np.arange(self.cell_size)] * self.cell_size * self.boxes_per_cell),
-            (self.boxes_per_cell, self.cell_size, self.cell_size)), (1, 2, 0))
+            (self.boxes_per_cell, self.cell_size, self.cell_size)), (1, 2, 0))   # transpose用来交换维度，最终结果是一个7x7x2的张量
 
         self.images = tf.placeholder(
             tf.float32, [None, self.image_size, self.image_size, 3],
@@ -64,7 +64,7 @@ class YOLONet(object):
             ):
                 net = tf.pad(
                     images, np.array([[0, 0], [3, 3], [3, 3], [0, 0]]),
-                    name='pad_1')
+                    name='pad_1')   # 将448x448的图像用0填充为454x454
                 net = slim.conv2d(
                     net, 64, 7, 2, padding='VALID', scope='conv_2')
                 net = slim.max_pool2d(net, 2, padding='SAME', scope='pool_3')
@@ -93,7 +93,7 @@ class YOLONet(object):
                 net = slim.conv2d(net, 1024, 3, scope='conv_26')
                 net = tf.pad(
                     net, np.array([[0, 0], [1, 1], [1, 1], [0, 0]]),
-                    name='pad_27')
+                    name='pad_27')   # ?
                 net = slim.conv2d(
                     net, 1024, 3, 2, padding='VALID', scope='conv_28')
                 net = slim.conv2d(net, 1024, 3, scope='conv_29')
@@ -123,13 +123,13 @@ class YOLONet(object):
                                  boxes1[..., 1] - boxes1[..., 3] / 2.0,
                                  boxes1[..., 0] + boxes1[..., 2] / 2.0,
                                  boxes1[..., 1] + boxes1[..., 3] / 2.0],
-                                axis=-1)
+                                axis=-1)   # 预测的结果
 
             boxes2_t = tf.stack([boxes2[..., 0] - boxes2[..., 2] / 2.0,
                                  boxes2[..., 1] - boxes2[..., 3] / 2.0,
                                  boxes2[..., 0] + boxes2[..., 2] / 2.0,
                                  boxes2[..., 1] + boxes2[..., 3] / 2.0],
-                                axis=-1)
+                                axis=-1)   # 真实结果
 
             # calculate the left up point & right down point
             lu = tf.maximum(boxes1_t[..., :2], boxes2_t[..., :2])
@@ -145,42 +145,46 @@ class YOLONet(object):
 
             union_square = tf.maximum(square1 + square2 - inter_square, 1e-10)
 
-        return tf.clip_by_value(inter_square / union_square, 0.0, 1.0)
+        return tf.clip_by_value(inter_square / union_square, 0.0, 1.0)   # clip_bu_value(A, min, max)将A压缩在min和max之间
 
     def loss_layer(self, predicts, labels, scope='loss_layer'):
+        '''predicts是一个7x7x30的张量
+           每个cell的预测结果用一个1x1x30的张量表示，
+           其中预测的两个bbox为(x, y, w, h, confidence)，占了10，然后有二十个类概率值
+        '''
         with tf.variable_scope(scope):
             predict_classes = tf.reshape(
                 predicts[:, :self.boundary1],
-                [self.batch_size, self.cell_size, self.cell_size, self.num_class])
+                [self.batch_size, self.cell_size, self.cell_size, self.num_class])   # 将7x7x20个类概率值拿出来
             predict_scales = tf.reshape(
                 predicts[:, self.boundary1:self.boundary2],
-                [self.batch_size, self.cell_size, self.cell_size, self.boxes_per_cell])
+                [self.batch_size, self.cell_size, self.cell_size, self.boxes_per_cell])   # 将7x7x2个confidence拿出来
             predict_boxes = tf.reshape(
                 predicts[:, self.boundary2:],
-                [self.batch_size, self.cell_size, self.cell_size, self.boxes_per_cell, 4])
+                [self.batch_size, self.cell_size, self.cell_size, self.boxes_per_cell, 4])   # 将7x7x2x4个坐标和高与宽拿出来
 
             response = tf.reshape(
                 labels[..., 0],
-                [self.batch_size, self.cell_size, self.cell_size, 1])
+                [self.batch_size, self.cell_size, self.cell_size, 1])   # 7x7x1
             boxes = tf.reshape(
                 labels[..., 1:5],
-                [self.batch_size, self.cell_size, self.cell_size, 1, 4])
+                [self.batch_size, self.cell_size, self.cell_size, 1, 4])   # 7x7x1x4
             boxes = tf.tile(
-                boxes, [1, 1, 1, self.boxes_per_cell, 1]) / self.image_size
-            classes = labels[..., 5:]
+                boxes, [1, 1, 1, self.boxes_per_cell, 1]) / self.image_size   # 7x7x2x4，bbox的x, y, w, h，因为预测两个，所以复制一次
+            classes = labels[..., 5:]   # 真实的类别信息
 
             offset = tf.reshape(
                 tf.constant(self.offset, dtype=tf.float32),
-                [1, self.cell_size, self.cell_size, self.boxes_per_cell])
-            offset = tf.tile(offset, [self.batch_size, 1, 1, 1])
-            offset_tran = tf.transpose(offset, (0, 2, 1, 3))
+                [1, self.cell_size, self.cell_size, self.boxes_per_cell])  # 1x7x7x2
+            offset = tf.tile(offset, [self.batch_size, 1, 1, 1])   # 将offset按照第一维复制batch_size次==> batch_size*7*7*2
+            offset_tran = tf.transpose(offset, (0, 2, 1, 3))   # 结果和未执行前是一样的呀？
             predict_boxes_tran = tf.stack(
                 [(predict_boxes[..., 0] + offset) / self.cell_size,
                  (predict_boxes[..., 1] + offset_tran) / self.cell_size,
                  tf.square(predict_boxes[..., 2]),
                  tf.square(predict_boxes[..., 3])], axis=-1)
 
-            iou_predict_truth = self.calc_iou(predict_boxes_tran, boxes)
+            iou_predict_truth = self.calc_iou(predict_boxes_tran, boxes)   # predict_boxes_tran表示预测值，boxes表示真实的数据
 
             # calculate I tensor [BATCH_SIZE, CELL_SIZE, CELL_SIZE, BOXES_PER_CELL]
             object_mask = tf.reduce_max(iou_predict_truth, 3, keep_dims=True)
