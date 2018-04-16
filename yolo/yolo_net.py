@@ -187,13 +187,13 @@ class YOLONet(object):
             iou_predict_truth = self.calc_iou(predict_boxes_tran, boxes)   # predict_boxes_tran表示预测值，boxes表示真实的数据
 
             # calculate I tensor [BATCH_SIZE, CELL_SIZE, CELL_SIZE, BOXES_PER_CELL]
-            object_mask = tf.reduce_max(iou_predict_truth, 3, keep_dims=True)
+            object_mask = tf.reduce_max(iou_predict_truth, 3, keep_dims=True)   # 按照第三个维度算出最大值并保持形状不变
             object_mask = tf.cast(
-                (iou_predict_truth >= object_mask), tf.float32) * response
+                (iou_predict_truth >= object_mask), tf.float32) * response   # 将bool转换为0和1的float
 
             # calculate no_I tensor [CELL_SIZE, CELL_SIZE, BOXES_PER_CELL]
             noobject_mask = tf.ones_like(
-                object_mask, dtype=tf.float32) - object_mask
+                object_mask, dtype=tf.float32) - object_mask   # 返回一个和object_mask相同的全1的tensor,
 
             boxes_tran = tf.stack(
                 [boxes[..., 0] * self.cell_size - offset,
