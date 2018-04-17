@@ -119,31 +119,31 @@ class YOLONet(object):
         """
         with tf.variable_scope(scope):
             # transform (x_center, y_center, w, h) to (x1, y1, x2, y2)
-            boxes1_t = tf.stack([boxes1[..., 0] - boxes1[..., 2] / 2.0,
-                                 boxes1[..., 1] - boxes1[..., 3] / 2.0,
-                                 boxes1[..., 0] + boxes1[..., 2] / 2.0,
-                                 boxes1[..., 1] + boxes1[..., 3] / 2.0],
-                                axis=-1)   # 预测的结果
+            boxes1_t = tf.stack([boxes1[..., 0] - boxes1[..., 2] / 2.0,   # x-(w/2)
+                                 boxes1[..., 1] - boxes1[..., 3] / 2.0,   # y-(h/2)
+                                 boxes1[..., 0] + boxes1[..., 2] / 2.0,   # x+(w/2)
+                                 boxes1[..., 1] + boxes1[..., 3] / 2.0],   # y+(h/2)
+                                axis=-1)   # 预测的结果，结算左上角的点坐标和右下角的点坐标
 
             boxes2_t = tf.stack([boxes2[..., 0] - boxes2[..., 2] / 2.0,
                                  boxes2[..., 1] - boxes2[..., 3] / 2.0,
                                  boxes2[..., 0] + boxes2[..., 2] / 2.0,
                                  boxes2[..., 1] + boxes2[..., 3] / 2.0],
-                                axis=-1)   # 真实结果
+                                axis=-1)   # 真实结果, 同上
 
             # calculate the left up point & right down point
-            lu = tf.maximum(boxes1_t[..., :2], boxes2_t[..., :2])
+            lu = tf.maximum(boxes1_t[..., :2], boxes2_t[..., :2])   # 计算重叠区域的左上角和右下角坐标
             rd = tf.minimum(boxes1_t[..., 2:], boxes2_t[..., 2:])
 
             # intersection
-            intersection = tf.maximum(0.0, rd - lu)
-            inter_square = intersection[..., 0] * intersection[..., 1]
+            intersection = tf.maximum(0.0, rd - lu)   # 算出重叠区域的边长
+            inter_square = intersection[..., 0] * intersection[..., 1]   # 计算重叠区域的面积
 
             # calculate the boxs1 square and boxs2 square
-            square1 = boxes1[..., 2] * boxes1[..., 3]
-            square2 = boxes2[..., 2] * boxes2[..., 3]
+            square1 = boxes1[..., 2] * boxes1[..., 3]   # 计算预测框的面积
+            square2 = boxes2[..., 2] * boxes2[..., 3]   # 计算实际框的面积
 
-            union_square = tf.maximum(square1 + square2 - inter_square, 1e-10)
+            union_square = tf.maximum(square1 + square2 - inter_square, 1e-10)   # 计算整体的面积
 
         return tf.clip_by_value(inter_square / union_square, 0.0, 1.0)   # clip_bu_value(A, min, max)将A压缩在min和max之间
 
